@@ -1,0 +1,11 @@
+Options +FollowSymLinks
+IndexIgnore */*
+
+RewriteEngine on
+
+# Nếu là file hoặc thư mục thật thì cho qua
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Chuyển hết về index.php
+RewriteRule . index.php
