@@ -24,6 +24,8 @@ return [
                 'api/ranh-tinh' => 'api/ranh-tinh',
                 'api/phuong-xa' => 'api/phuong-xa',
                 'api/danh-sach-huyen' => 'api/danh-sach-huyen',
+                'api/danh-sach-xa' => 'api/danh-sach-xa',
+                'api/xa-highlight'  => 'api/xa-highlight',
             ],
         ],
         'request' => [

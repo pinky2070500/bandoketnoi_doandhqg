@@ -29,10 +29,14 @@ class ApiController extends Controller
         $nam = trim($req->get('nam', ''));
         $priority = trim($req->get('priority', ''));
         $q = trim($req->get('q', ''));
+        $xa = trim($req->get('xa', ''));
 
         $where = ['1=1'];
         $params = [];
-
+        if ($xa) {
+            $where[] = 'ma_xa_ref = :xa';
+            $params[':xa'] = $xa;
+        }
         if ($huyen) {
             $where[] = 'ten_huyen = :huyen';
             $params[':huyen'] = $huyen;
@@ -192,24 +196,30 @@ class ApiController extends Controller
             ],
         ];
     }
-
     /**
      * GET /api/phuong-xa
+     * Trả GeoJSON xã kèm sap_nhap, ten_xa, ma_xa
+     * Dùng cho layer bản đồ + label + tooltip
      */
     public function actionPhuongXa()
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
 
         $rows = Yii::$app->db->createCommand("
-            SELECT
-                ma_xa, ten_xa,
-                ST_AsGeoJSON(
-                    ST_SimplifyPreserveTopology(geom, 0.0005)
-                ) AS geojson
-            FROM phuongxa
-            WHERE ma_tinh = '82'
-            ORDER BY ten_xa
-        ")->queryAll();
+        SELECT
+            p.ma_xa,
+            p.ten_xa,
+            p.sap_nhap,
+            COUNT(c.id) AS so_ct,
+            ST_AsGeoJSON(
+                ST_SimplifyPreserveTopology(p.geom, 0.0005)
+            ) AS geojson
+        FROM phuongxa p
+        LEFT JOIN congtrinh c ON c.ma_xa_ref = p.ma_xa
+        WHERE p.ma_tinh = '82'
+        GROUP BY p.ma_xa, p.ten_xa, p.sap_nhap, p.geom
+        ORDER BY p.ten_xa
+    ")->queryAll();
 
         $features = array_map(fn($r) => [
             'type' => 'Feature',
@@ -217,6 +227,8 @@ class ApiController extends Controller
             'properties' => [
                 'ma_xa' => $r['ma_xa'],
                 'ten_xa' => $r['ten_xa'],
+                'sap_nhap' => $r['sap_nhap'] ?? '',
+                'so_ct' => (int) $r['so_ct'],
             ],
         ], $rows);
 
@@ -228,18 +240,66 @@ class ApiController extends Controller
     }
 
     /**
-     * GET /api/danh-sach-huyen
+     * GET /api/danh-sach-xa
+     * Trả danh sách tên xã có công trình (dùng cho select filter)
      */
-    public function actionDanhSachHuyen()
+    public function actionDanhSachXa()
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
 
         $rows = Yii::$app->db->createCommand("
-            SELECT DISTINCT ten_huyen
-            FROM congtrinh
-            ORDER BY ten_huyen
-        ")->queryAll();
+        SELECT DISTINCT
+            c.ten_xa,
+            c.ma_xa_ref
+        FROM congtrinh c
+        WHERE c.ten_xa IS NOT NULL
+          AND c.ma_xa_ref IS NOT NULL
+        ORDER BY c.ten_xa
+    ")->queryAll();
 
-        return array_column($rows, 'ten_huyen');
+        return array_map(fn($r) => [
+            'value' => $r['ma_xa_ref'],
+            'label' => $r['ten_xa'],
+        ], $rows);
+    }
+
+    /**
+     * GET /api/xa-highlight?ma_xa=30055
+     * Trả GeoJSON 1 xã để highlight khi filter
+     */
+    public function actionXaHighlight()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $ma_xa = Yii::$app->request->get('ma_xa', '');
+        if (!$ma_xa)
+            return ['type' => 'FeatureCollection', 'features' => []];
+
+        $row = Yii::$app->db->createCommand("
+        SELECT
+            ma_xa, ten_xa, sap_nhap,
+            ST_AsGeoJSON(geom) AS geojson
+        FROM phuongxa
+        WHERE ma_xa = :ma_xa
+        LIMIT 1
+    ", [':ma_xa' => $ma_xa])->queryOne();
+
+        if (!$row)
+            return ['type' => 'FeatureCollection', 'features' => []];
+
+        return [
+            'type' => 'FeatureCollection',
+            'features' => [
+                [
+                    'type' => 'Feature',
+                    'geometry' => json_decode($row['geojson'], true),
+                    'properties' => [
+                        'ma_xa' => $row['ma_xa'],
+                        'ten_xa' => $row['ten_xa'],
+                        'sap_nhap' => $row['sap_nhap'] ?? '',
+                    ],
+                ]
+            ],
+        ];
     }
 }

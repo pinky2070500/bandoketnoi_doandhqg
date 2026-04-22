@@ -38,14 +38,17 @@ return [
         'errorHandler' => [
             'errorAction' => 'site/error',
         ],
-        /*
         'urlManager' => [
             'enablePrettyUrl' => true,
             'showScriptName' => false,
             'rules' => [
+                '' => 'site/index',
+                'cong-trinh' => 'cong-trinh/index',
+                'cong-trinh/them' => 'cong-trinh/create',
+                'cong-trinh/<id:\d+>' => 'cong-trinh/update',
+                'cong-trinh/xoa/<id:\d+>' => 'cong-trinh/delete',
             ],
         ],
-        */
     ],
     'params' => $params,
 ];
