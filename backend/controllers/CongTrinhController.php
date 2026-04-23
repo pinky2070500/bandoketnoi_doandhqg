@@ -95,6 +95,23 @@ class CongTrinhController extends Controller
         return $this->render('index', compact('rows', 'pages', 'total', 'huyens', 'thongke', 'q', 'huyen', 'nam', 'priority', 'status', 'coords'));
     }
 
+    // ── XEM CHI TIẾT ──────────────────────────────────
+    public function actionView($id)
+    {
+        $db = Yii::$app->db;
+        $row = $db->createCommand("
+            SELECT *,
+                ST_X(geom::geometry) AS lng,
+                ST_Y(geom::geometry) AS lat
+            FROM congtrinh WHERE id = :id
+        ", [':id' => (int) $id])->queryOne();
+
+        if (!$row)
+            throw new NotFoundHttpException("Không tìm thấy công trình #$id");
+
+        return $this->render('view', ['data' => $row]);
+    }
+
     // ── TẠO MỚI ──────────────────────────────────────
     public function actionCreate()
     {
@@ -176,6 +193,18 @@ class CongTrinhController extends Controller
                 'tien_do' => 0,
                 'lat' => null,
                 'lng' => null,
+                'ten_xa' => '',
+                'ten_huyen' => '',
+                'ma_xa_ref' => '',
+                'chieu_dai' => '',
+                'chieu_rong' => '',
+                'tai_trong' => '',
+                'kinh_phi_dc' => '',
+                'mo_ta' => '',
+                'lien_he_ho_ten' => '',
+                'lien_he_chuc_vu' => '',
+                'lien_he_sdt' => '',
+                'lien_he_email' => '',
             ],
             'errors' => [],
             'isNew' => true,

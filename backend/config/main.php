@@ -47,6 +47,8 @@ return [
                 'cong-trinh/them' => 'cong-trinh/create',
                 'cong-trinh/<id:\d+>' => 'cong-trinh/update',
                 'cong-trinh/xoa/<id:\d+>' => 'cong-trinh/delete',
+                'cong-trinh/xem/<id:\d+>' => 'cong-trinh/view',
+                'cong-trinh/sua/<id:\d+>' => 'cong-trinh/update',
             ],
         ],
     ],

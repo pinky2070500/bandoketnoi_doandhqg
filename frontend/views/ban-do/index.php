@@ -614,6 +614,29 @@ html,body{height:100%;font-family:'Inter',sans-serif;font-size:14px;overflow:hid
       </div>
     </div>
   </div>
+
+  <!-- Action buttons -->
+  <div style="padding:0 18px 18px;display:flex;gap:8px">
+    <button onclick="locateMarker()"
+      style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;
+             padding:9px;border-radius:9px;border:1.5px solid var(--gray-200);
+             background:var(--gray-50);color:var(--gray-600);font-size:12.5px;
+             font-weight:500;cursor:pointer;font-family:inherit;transition:all .18s"
+      onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green-dark)';this.style.background='var(--green-lite)'"
+      onmouseout="this.style.borderColor='var(--gray-200)';this.style.color='var(--gray-600)';this.style.background='var(--gray-50)'">
+      <i class="fa fa-crosshairs"></i> Định vị
+    </button>
+    <a id="btn-edit" href="#"
+      target="_blank"
+      style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;
+             padding:9px;border-radius:9px;border:1.5px solid var(--green);
+             background:var(--green-lite);color:var(--green-dark);font-size:12.5px;
+             font-weight:600;cursor:pointer;text-decoration:none;transition:all .18s"
+      onmouseover="this.style.background='var(--green)';this.style.color='#fff'"
+      onmouseout="this.style.background='var(--green-lite)';this.style.color='var(--green-dark)'">
+      <i class="fa fa-eye"></i> Xem chi tiết
+    </a>
+  </div>
 </div>
 
 <!-- BOTTOM NAV (mobile only) -->
@@ -906,6 +929,13 @@ function showDetail(p){
   document.getElementById('detail').classList.add('open');
   if(!isMob()) document.getElementById('map-wrap').classList.add('panel-open');
   setTimeout(()=>map.invalidateSize(),350);
+
+  // Nút định vị
+  window._currentProps = p;
+
+  // Nút xem chi tiết → mở trang admin view trong tab mới
+  const adminUrl = 'http://admin.bandoketnoi.local/cong-trinh/xem/' + p.id;
+  document.getElementById('btn-edit').href = adminUrl;
 }
 
 function closeDetail(){
@@ -913,6 +943,20 @@ function closeDetail(){
   document.getElementById('map-wrap').classList.remove('panel-open');
   if(selMarker){selMarker.setIcon(mkIcon(selMarker._props.muc_uu_tien,false));selMarker=null}
   setTimeout(()=>map.invalidateSize(),350);
+}
+
+function locateMarker(){
+  const p = window._currentProps;
+  if(!p) return;
+  const [lng,lat] = [0,0]; // fallback
+  // Tìm marker đang chọn
+  if(selMarker){
+    const ll = selMarker.getLatLng();
+    map.flyTo(ll, 15, {duration:1.2});
+    // Flash effect
+    const el = selMarker.getElement();
+    if(el){ el.style.transition='transform .2s'; el.style.transform='scale(1.8)'; setTimeout(()=>el.style.transform='scale(1)',400); }
+  }
 }
 
 /* ── FILTERS ── */
