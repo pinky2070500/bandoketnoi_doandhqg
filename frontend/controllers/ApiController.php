@@ -4,7 +4,12 @@ namespace frontend\controllers;
 use Yii;
 use yii\web\Controller;
 use yii\web\Response;
+use common\helpers\Dhqg;
 
+/**
+ * API công khai (đọc-only) cho Hệ thống Bản đồ số Khu đô thị ĐHQG-HCM.
+ * Trả GeoJSON toạ độ [lng,lat]; tắt CSRF; CORS *.
+ */
 class ApiController extends Controller
 {
     public $enableCsrfValidation = false;
@@ -13,293 +18,262 @@ class ApiController extends Controller
     {
         $this->layout = false;
         Yii::$app->response->headers->add('Access-Control-Allow-Origin', '*');
+        Yii::$app->response->format = Response::FORMAT_JSON;
         return parent::beforeAction($action);
     }
 
     /**
-     * GET /api/congtrinh
-     * Params: huyen, nam, priority, q
+     * GET /api/diem — điểm của 1 hoặc tất cả module.
+     * Params: module, loai, nam, trang_thai, don_vi, q
      */
-    public function actionCongtrinh()
+    public function actionDiem()
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-
         $req = Yii::$app->request;
-        $huyen = trim($req->get('huyen', ''));
-        $nam = trim($req->get('nam', ''));
-        $priority = trim($req->get('priority', ''));
-        $q = trim($req->get('q', ''));
-        $xa = trim($req->get('xa', ''));
-
-        $where = ['1=1'];
+        $where = ['d.geom IS NOT NULL'];
         $params = [];
-        if ($xa) {
-            $where[] = 'ma_xa_ref = :xa';
-            $params[':xa'] = $xa;
+
+        $module = trim((string) $req->get('module', ''));
+        if ($module !== '' && Dhqg::moduleTonTai($module)) {
+            $where[] = 'd.module = :module';
+            $params[':module'] = $module;
         }
-        if ($huyen) {
-            $where[] = 'ten_huyen = :huyen';
-            $params[':huyen'] = $huyen;
+        foreach (['loai' => 'd.loai', 'trang_thai' => 'd.trang_thai'] as $g => $col) {
+            $val = trim((string) $req->get($g, ''));
+            if ($val !== '') {
+                // Cho phép danh sách phân tách bằng dấu phẩy
+                $list = array_values(array_filter(array_map('trim', explode(',', $val))));
+                if ($list) {
+                    $ph = [];
+                    foreach ($list as $i => $vv) {
+                        $k = ":{$g}{$i}";
+                        $ph[] = $k;
+                        $params[$k] = $vv;
+                    }
+                    $where[] = "$col IN (" . implode(',', $ph) . ')';
+                }
+            }
         }
-        if ($nam) {
-            $where[] = 'nam_dau_tu = :nam';
+        if (($nam = trim((string) $req->get('nam', ''))) !== '') {
+            $where[] = 'd.nam = :nam';
             $params[':nam'] = (int) $nam;
         }
-        if ($priority) {
-            $list = array_filter(array_map('trim', explode(',', $priority)));
-            $holders = [];
-            foreach ($list as $i => $v) {
-                $key = ":p$i";
-                $holders[] = $key;
-                $params[$key] = $v;
-            }
-            if ($holders) {
-                $where[] = 'muc_uu_tien IN (' . implode(',', $holders) . ')';
-            }
+        if (($dv = trim((string) $req->get('don_vi', ''))) !== '') {
+            $where[] = '(d.don_vi_thuc_hien_id = :dv OR d.don_vi_quan_ly_id = :dv)';
+            $params[':dv'] = (int) $dv;
         }
-        // Thêm sau đoạn xử lý $priority
-        $loai_ct = trim($req->get('loai_ct', ''));
-        if ($loai_ct) {
-            $list = array_filter(array_map('trim', explode(',', $loai_ct)));
-            $holders = [];
-            foreach ($list as $i => $v) {
-                $key = ":lct$i";
-                $holders[] = $key;
-                $params[$key] = $v;
-            }
-            if ($holders) {
-                $where[] = 'loai_ct IN (' . implode(',', $holders) . ')';
-            }
-        }
-        if ($q) {
-            $where[] = '(ten_ct ILIKE :q OR ten_xa ILIKE :q OR ten_huyen ILIKE :q)';
+        if (($q = trim((string) $req->get('q', ''))) !== '') {
+            $where[] = '(d.ten ILIKE :q OR d.ma ILIKE :q OR d.mo_ta ILIKE :q)';
             $params[':q'] = '%' . $q . '%';
         }
-
         $whereStr = implode(' AND ', $where);
 
         $rows = Yii::$app->db->createCommand("
-            SELECT
-                id, ma_ct, ten_ct, ten_xa, ten_huyen,
-                nam_dau_tu, chieu_dai, chieu_rong, tai_trong,
-                loai_ct, muc_uu_tien, trang_thai, tien_do,
-                mo_ta, lien_he_ho_ten, lien_he_chuc_vu, lien_he_sdt,
-                ST_X(geom::geometry) AS lng,
-                ST_Y(geom::geometry) AS lat
-            FROM congtrinh
-            WHERE geom IS NOT NULL AND $whereStr
-            ORDER BY nam_dau_tu, id
+            SELECT d.id, d.ma, d.ten, d.module, d.loai, d.trang_thai, d.nam,
+                   dv.ten AS don_vi_thuc_hien,
+                   (SELECT count(*) FROM hinh_anh h WHERE h.doi_tuong_id = d.id) AS so_anh,
+                   (SELECT h.url FROM hinh_anh h WHERE h.doi_tuong_id = d.id ORDER BY h.thu_tu, h.id LIMIT 1) AS anh,
+                   ST_X(d.geom::geometry) AS lng, ST_Y(d.geom::geometry) AS lat
+            FROM doi_tuong d
+            LEFT JOIN don_vi dv ON dv.id = d.don_vi_thuc_hien_id
+            WHERE $whereStr
+            ORDER BY d.module, d.id
         ", $params)->queryAll();
-
-        $features = array_map(function ($r) {
-            return [
-                'type' => 'Feature',
-                'geometry' => [
-                    'type' => 'Point',
-                    'coordinates' => [(float) $r['lng'], (float) $r['lat']],
-                ],
-                'properties' => [
-                    'id' => (int) $r['id'],
-                    'ma_ct' => $r['ma_ct'],
-                    'ten_ct' => $r['ten_ct'],
-                    'ten_xa' => $r['ten_xa'],
-                    'ten_huyen' => $r['ten_huyen'],
-                    'nam_dau_tu' => (int) $r['nam_dau_tu'],
-                    'chieu_dai' => $r['chieu_dai'],
-                    'chieu_rong' => $r['chieu_rong'],
-                    'tai_trong' => $r['tai_trong'],
-                    'loai_ct' => $r['loai_ct'],
-                    'muc_uu_tien' => $r['muc_uu_tien'],
-                    'trang_thai' => $r['trang_thai'],
-                    'tien_do' => (int) $r['tien_do'],
-                    'lien_he' => $r['lien_he_ho_ten'],
-                    'chuc_vu' => $r['lien_he_chuc_vu'],
-                    'sdt' => $r['lien_he_sdt'],
-                ],
-            ];
-        }, $rows);
-
-        return [
-            'type' => 'FeatureCollection',
-            'total' => count($features),
-            'features' => $features,
-        ];
-    }
-
-    /**
-     * GET /api/thongke
-     */
-    public function actionThongke()
-    {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-        $db = Yii::$app->db;
-
-        $tong = $db->createCommand("
-            SELECT
-                COUNT(*)                                                        AS tong,
-                SUM(CASE WHEN trang_thai='hoan_thanh'    THEN 1 ELSE 0 END)    AS hoan_thanh,
-                SUM(CASE WHEN trang_thai='dang_thi_cong' THEN 1 ELSE 0 END)    AS dang_thi_cong,
-                SUM(CASE WHEN trang_thai='cho_dau_tu'    THEN 1 ELSE 0 END)    AS cho_dau_tu,
-                SUM(CASE WHEN muc_uu_tien='khan_cap'     THEN 1 ELSE 0 END)    AS khan_cap
-            FROM congtrinh
-        ")->queryOne();
-
-        $theo_huyen = $db->createCommand("
-            SELECT ten_huyen, COUNT(*) AS so_luong
-            FROM congtrinh
-            GROUP BY ten_huyen
-            ORDER BY so_luong DESC
-        ")->queryAll();
-
-        $theo_nam = $db->createCommand("
-            SELECT nam_dau_tu, COUNT(*) AS so_luong
-            FROM congtrinh
-            GROUP BY nam_dau_tu
-            ORDER BY nam_dau_tu
-        ")->queryAll();
-
-        return [
-            'tong' => $tong,
-            'theo_huyen' => $theo_huyen,
-            'theo_nam' => $theo_nam,
-        ];
-    }
-
-    /**
-     * GET /api/ranh-tinh
-     */
-    public function actionRanhTinh()
-    {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-
-        $row = Yii::$app->db->createCommand("
-            SELECT ST_AsGeoJSON(
-                ST_SimplifyPreserveTopology(geom, 0.001)
-            ) AS geojson
-            FROM ranhtinh
-            WHERE ma_tinh = '82'
-            LIMIT 1
-        ")->queryOne();
-
-        if (!$row) {
-            return ['type' => 'FeatureCollection', 'features' => []];
-        }
-
-        return [
-            'type' => 'FeatureCollection',
-            'features' => [
-                [
-                    'type' => 'Feature',
-                    'geometry' => json_decode($row['geojson'], true),
-                    'properties' => ['ten_tinh' => 'Đồng Tháp'],
-                ]
-            ],
-        ];
-    }
-    /**
-     * GET /api/phuong-xa
-     * Trả GeoJSON xã kèm sap_nhap, ten_xa, ma_xa
-     * Dùng cho layer bản đồ + label + tooltip
-     */
-    public function actionPhuongXa()
-    {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-
-        $rows = Yii::$app->db->createCommand("
-        SELECT
-            p.ma_xa,
-            p.ten_xa,
-            p.sap_nhap,
-            COUNT(c.id) AS so_ct,
-            ST_AsGeoJSON(
-                ST_SimplifyPreserveTopology(p.geom, 0.0005)
-            ) AS geojson
-        FROM phuongxa p
-        LEFT JOIN congtrinh c ON c.ma_xa_ref = p.ma_xa
-        WHERE p.ma_tinh = '82'
-        GROUP BY p.ma_xa, p.ten_xa, p.sap_nhap, p.geom
-        ORDER BY p.ten_xa
-    ")->queryAll();
 
         $features = array_map(fn($r) => [
             'type' => 'Feature',
-            'geometry' => json_decode($r['geojson'], true),
+            'geometry' => ['type' => 'Point', 'coordinates' => [(float) $r['lng'], (float) $r['lat']]],
             'properties' => [
-                'ma_xa' => $r['ma_xa'],
-                'ten_xa' => $r['ten_xa'],
-                'sap_nhap' => $r['sap_nhap'] ?? '',
-                'so_ct' => (int) $r['so_ct'],
+                'id' => (int) $r['id'],
+                'ma' => $r['ma'],
+                'ten' => $r['ten'],
+                'module' => $r['module'],
+                'loai' => $r['loai'],
+                'loai_label' => Dhqg::loaiLabel($r['module'], $r['loai']),
+                'trang_thai' => $r['trang_thai'],
+                'trang_thai_label' => Dhqg::trangThaiLabel($r['trang_thai']),
+                'nam' => $r['nam'] ? (int) $r['nam'] : null,
+                'don_vi' => $r['don_vi_thuc_hien'],
+                'so_anh' => (int) $r['so_anh'],
+                'anh' => Dhqg::anhUrl($r['anh']),
             ],
         ], $rows);
 
+        return ['type' => 'FeatureCollection', 'total' => count($features), 'features' => $features];
+    }
+
+    /** GET /api/diem-chi-tiet?id= — chi tiết 1 đối tượng + tất cả ảnh (popup / trang QR). */
+    public function actionChiTiet($id)
+    {
+        $r = Yii::$app->db->createCommand("
+            SELECT d.*, dv1.ten AS don_vi_thuc_hien, dv2.ten AS don_vi_quan_ly,
+                   ST_X(d.geom::geometry) AS lng, ST_Y(d.geom::geometry) AS lat
+            FROM doi_tuong d
+            LEFT JOIN don_vi dv1 ON dv1.id = d.don_vi_thuc_hien_id
+            LEFT JOIN don_vi dv2 ON dv2.id = d.don_vi_quan_ly_id
+            WHERE d.id = :id
+        ", [':id' => (int) $id])->queryOne();
+        if (!$r) {
+            return ['ok' => false];
+        }
+        $anh = Yii::$app->db->createCommand(
+            'SELECT url, loai_anh FROM hinh_anh WHERE doi_tuong_id=:i ORDER BY thu_tu, id',
+            [':i' => (int) $id]
+        )->queryAll();
+
         return [
-            'type' => 'FeatureCollection',
-            'total' => count($features),
-            'features' => $features,
+            'ok' => true,
+            'id' => (int) $r['id'],
+            'ma' => $r['ma'],
+            'ten' => $r['ten'],
+            'module' => $r['module'],
+            'module_label' => Dhqg::moduleLabel($r['module']),
+            'loai' => $r['loai'],
+            'loai_label' => Dhqg::loaiLabel($r['module'], $r['loai']),
+            'trang_thai' => $r['trang_thai'],
+            'trang_thai_label' => Dhqg::trangThaiLabel($r['trang_thai']),
+            'nam' => $r['nam'] ? (int) $r['nam'] : null,
+            'don_vi_thuc_hien' => $r['don_vi_thuc_hien'],
+            'don_vi_quan_ly' => $r['don_vi_quan_ly'],
+            'mo_ta' => $r['mo_ta'],
+            'noi_dung' => $r['noi_dung'],
+            'lat' => $r['lat'] !== null ? (float) $r['lat'] : null,
+            'lng' => $r['lng'] !== null ? (float) $r['lng'] : null,
+            'anh' => array_map(fn($a) => ['url' => Dhqg::anhUrl($a['url']), 'loai' => $a['loai_anh']], $anh),
         ];
     }
 
-    /**
-     * GET /api/danh-sach-xa
-     * Trả danh sách tên xã có công trình (dùng cho select filter)
-     */
-    public function actionDanhSachXa()
+    /** GET /api/thongke?module= — thống kê 1 module (hoặc tất cả nếu bỏ trống). */
+    public function actionThongke()
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
+        $db = Yii::$app->db;
+        $module = trim((string) Yii::$app->request->get('module', ''));
+        $cond = '1=1';
+        $p = [];
+        if ($module !== '' && Dhqg::moduleTonTai($module)) {
+            $cond = 'module = :m';
+            $p[':m'] = $module;
+        }
 
+        $tong = $db->createCommand("
+            SELECT COUNT(*) tong,
+                   SUM(CASE WHEN trang_thai='hoan_thanh' THEN 1 ELSE 0 END) hoan_thanh,
+                   SUM(CASE WHEN trang_thai='dang_trien_khai' THEN 1 ELSE 0 END) dang_trien_khai,
+                   SUM(CASE WHEN trang_thai='de_xuat' THEN 1 ELSE 0 END) de_xuat,
+                   SUM(CASE WHEN nam = EXTRACT(YEAR FROM now()) THEN 1 ELSE 0 END) trong_nam
+            FROM doi_tuong WHERE $cond
+        ", $p)->queryOne();
+
+        $theo_loai = $db->createCommand("SELECT loai, COUNT(*) so_luong FROM doi_tuong WHERE $cond GROUP BY loai ORDER BY so_luong DESC", $p)->queryAll();
+        $theo_don_vi = $db->createCommand("
+            SELECT dv.ten, COUNT(*) so_luong FROM doi_tuong d
+            LEFT JOIN don_vi dv ON dv.id = d.don_vi_thuc_hien_id
+            WHERE $cond GROUP BY dv.ten ORDER BY so_luong DESC
+        ", $p)->queryAll();
+
+        return ['tong' => $tong, 'theo_loai' => $theo_loai, 'theo_don_vi' => $theo_don_vi];
+    }
+
+    /** GET /api/tong-hop — dữ liệu dashboard lãnh đạo. Params: don_vi, tu_nam, den_nam */
+    public function actionTongHop()
+    {
+        $db = Yii::$app->db;
+        $req = Yii::$app->request;
+        $where = ['1=1'];
+        $p = [];
+        if (($dv = trim((string) $req->get('don_vi', ''))) !== '') {
+            $where[] = '(don_vi_thuc_hien_id = :dv OR don_vi_quan_ly_id = :dv)';
+            $p[':dv'] = (int) $dv;
+        }
+        if (($tu = trim((string) $req->get('tu_nam', ''))) !== '') {
+            $where[] = 'nam >= :tu';
+            $p[':tu'] = (int) $tu;
+        }
+        if (($den = trim((string) $req->get('den_nam', ''))) !== '') {
+            $where[] = 'nam <= :den';
+            $p[':den'] = (int) $den;
+        }
+        $w = implode(' AND ', $where);
+
+        $theo_module = $db->createCommand("SELECT module, COUNT(*) so FROM doi_tuong WHERE $w GROUP BY module", $p)->queryAll();
+        $theo_trang_thai = $db->createCommand("SELECT trang_thai, COUNT(*) so FROM doi_tuong WHERE $w AND module='cong_trinh' GROUP BY trang_thai", $p)->queryAll();
+        $theo_nam = $db->createCommand("SELECT nam, COUNT(*) so FROM doi_tuong WHERE $w AND nam IS NOT NULL GROUP BY nam ORDER BY nam", $p)->queryAll();
+        $theo_loai_ct = $db->createCommand("SELECT loai, COUNT(*) so FROM doi_tuong WHERE $w AND module='cong_trinh' GROUP BY loai", $p)->queryAll();
+
+        // Đếm nhanh theo hạng mục cho card lãnh đạo
+        $count = fn($sql) => (int) $db->createCommand("SELECT COUNT(*) FROM doi_tuong WHERE $w AND $sql", $p)->queryScalar();
+        return [
+            'the' => [
+                'cong_trinh' => $count("module='cong_trinh'"),
+                'check_in' => $count("module='cong_trinh' AND loai='check_in'"),
+                'an_toan' => $count("module='an_toan'"),
+                'pano' => $count("module='truyen_thong' AND loai='pano'"),
+                'truyen_thong' => $count("module='truyen_thong'"),
+                'hoan_thanh' => $count("trang_thai='hoan_thanh'"),
+            ],
+            'theo_module' => $theo_module,
+            'theo_trang_thai' => $theo_trang_thai,
+            'theo_nam' => $theo_nam,
+            'theo_loai_ct' => $theo_loai_ct,
+        ];
+    }
+
+    /** GET /api/ranh-khu — ranh giới Khu đô thị ĐHQG-HCM. */
+    public function actionRanhKhu()
+    {
         $rows = Yii::$app->db->createCommand("
-        SELECT DISTINCT
-            c.ten_xa,
-            c.ma_xa_ref
-        FROM congtrinh c
-        WHERE c.ten_xa IS NOT NULL
-          AND c.ma_xa_ref IS NOT NULL
-        ORDER BY c.ten_xa
-    ")->queryAll();
+            SELECT ten, ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.0002)) gj FROM ranh_khu
+        ")->queryAll();
+        return $this->fc($rows, fn($r) => ['ten' => $r['ten']]);
+    }
 
+    /** GET /api/phan-khu — các phân khu / trường thành viên. */
+    public function actionPhanKhu()
+    {
+        $rows = Yii::$app->db->createCommand("
+            SELECT ma, ten, loai, ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.00015)) gj FROM phan_khu ORDER BY ten
+        ")->queryAll();
+        return $this->fc($rows, fn($r) => ['ma' => $r['ma'], 'ten' => $r['ten'], 'loai' => $r['loai']]);
+    }
+
+    /** GET /api/don-vi — danh sách đơn vị. */
+    public function actionDonVi()
+    {
+        $rows = Yii::$app->db->createCommand('SELECT id, ma, ten, modules FROM don_vi ORDER BY ten')->queryAll();
         return array_map(fn($r) => [
-            'value' => $r['ma_xa_ref'],
-            'label' => $r['ten_xa'],
+            'id' => (int) $r['id'],
+            'ma' => $r['ma'],
+            'ten' => $r['ten'],
+            'modules' => $r['modules'] ? json_decode($r['modules'], true) : [],
         ], $rows);
     }
 
-    /**
-     * GET /api/xa-highlight?ma_xa=30055
-     * Trả GeoJSON 1 xã để highlight khi filter
-     */
-    public function actionXaHighlight()
+    /** GET /api/cau-hinh — cấu hình module/enum cho FE (data-driven). */
+    public function actionCauHinh()
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-
-        $ma_xa = Yii::$app->request->get('ma_xa', '');
-        if (!$ma_xa)
-            return ['type' => 'FeatureCollection', 'features' => []];
-
-        $row = Yii::$app->db->createCommand("
-        SELECT
-            ma_xa, ten_xa, sap_nhap,
-            ST_AsGeoJSON(geom) AS geojson
-        FROM phuongxa
-        WHERE ma_xa = :ma_xa
-        LIMIT 1
-    ", [':ma_xa' => $ma_xa])->queryOne();
-
-        if (!$row)
-            return ['type' => 'FeatureCollection', 'features' => []];
-
         return [
-            'type' => 'FeatureCollection',
-            'features' => [
-                [
-                    'type' => 'Feature',
-                    'geometry' => json_decode($row['geojson'], true),
-                    'properties' => [
-                        'ma_xa' => $row['ma_xa'],
-                        'ten_xa' => $row['ten_xa'],
-                        'sap_nhap' => $row['sap_nhap'] ?? '',
-                    ],
-                ]
-            ],
+            'center' => Dhqg::MAP_CENTER,
+            'zoom' => Dhqg::MAP_ZOOM,
+            'brand' => ['main' => Dhqg::BRAND, 'alt' => Dhqg::BRAND_2, 'dark' => Dhqg::BRAND_DARK, 'light' => Dhqg::BRAND_LIGHT],
+            'modules' => Dhqg::MODULES,
+            'trang_thai' => Dhqg::TRANG_THAI,
+            'mau_trang_thai' => Dhqg::MAU_TRANG_THAI,
         ];
+    }
+
+    /** Helper build FeatureCollection từ cột 'gj' (GeoJSON geometry). */
+    private function fc(array $rows, callable $props): array
+    {
+        $features = [];
+        foreach ($rows as $r) {
+            if (empty($r['gj'])) {
+                continue;
+            }
+            $features[] = [
+                'type' => 'Feature',
+                'geometry' => json_decode($r['gj'], true),
+                'properties' => $props($r),
+            ];
+        }
+        return ['type' => 'FeatureCollection', 'total' => count($features), 'features' => $features];
     }
 }

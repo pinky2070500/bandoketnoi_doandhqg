@@ -37,6 +37,12 @@ phpunit.phar
 # vagrant runtime
 /.vagrant
 
+# Claude Code (agent env, settings, memory, docs)
+/.claude/
+/CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+
 # ignore generated files
 /frontend/web/index.php
 /frontend/web/index-test.php

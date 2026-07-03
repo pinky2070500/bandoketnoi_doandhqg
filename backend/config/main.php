@@ -41,15 +41,22 @@ return [
         'urlManager' => [
             'enablePrettyUrl' => true,
             'showScriptName' => false,
-            'rules' => [
-                '' => 'site/index',
-                'cong-trinh' => 'cong-trinh/index',
-                'cong-trinh/them' => 'cong-trinh/create',
-                'cong-trinh/<id:\d+>' => 'cong-trinh/update',
-                'cong-trinh/xoa/<id:\d+>' => 'cong-trinh/delete',
-                'cong-trinh/xem/<id:\d+>' => 'cong-trinh/view',
-                'cong-trinh/sua/<id:\d+>' => 'cong-trinh/update',
-            ],
+            'rules' => array_merge(
+                ['' => 'site/index'],
+                // 3 module CRUD dùng chung mẫu URL tiếng Việt
+                call_user_func(function () {
+                    $r = [];
+                    foreach (['cong-trinh', 'an-toan', 'truyen-thong'] as $c) {
+                        $r["$c"] = "$c/index";
+                        $r["$c/them"] = "$c/create";
+                        $r["$c/xem/<id:\\d+>"] = "$c/view";
+                        $r["$c/sua/<id:\\d+>"] = "$c/update";
+                        $r["$c/xoa/<id:\\d+>"] = "$c/delete";
+                        $r["$c/<id:\\d+>"] = "$c/update";
+                    }
+                    return $r;
+                })
+            ),
         ],
     ],
     'params' => $params,

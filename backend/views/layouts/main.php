@@ -11,12 +11,13 @@ $user = Yii::$app->user;
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= Html::encode($this->title) ?> – Quản trị Bản đồ kết nối</title>
+<title><?= Html::encode($this->title) ?> – Quản trị Bản đồ số ĐHQG-HCM</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
 <style>
 :root{
-  --green:#16a37f;--green-dark:#0d7a5f;--green-lite:#e6f7f2;
+  /* Thương hiệu ĐHQG-HCM (xanh dương). Giữ tên biến --green* để tương thích code cũ. */
+  --green:#123c8a;--green-dark:#0c2a63;--green-lite:#eaf1fb;
   --sidebar-w:240px;--top-h:54px;
   --gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;
   --gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;
@@ -216,7 +217,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 <div id="topbar">
   <div class="tb-logo">
     <div class="tb-logo-icon"><i class="fa-solid fa-map-location-dot"></i></div>
-    <div class="tb-brand">Bản đồ kết nối <span>Quản trị</span></div>
+    <div class="tb-brand">Bản đồ số ĐHQG-HCM <span>Quản trị</span></div>
   </div>
   <div class="tb-spacer"></div>
   <a class="tb-link" href="http://bandoketnoi.local" target="_blank">
@@ -238,14 +239,25 @@ textarea.form-control{resize:vertical;min-height:80px}
   </div>
   <div class="sb-section">
     <div class="sb-section-title">Dữ liệu</div>
-    <a class="nav-item <?= Yii::$app->controller->id==='cong-trinh'?'active':'' ?>" href="<?= Url::to(['/cong-trinh/index']) ?>">
-      <i class="fa fa-bridge"></i> Công trình
-      <?php
-      $chua = (int)\Yii::$app->db->createCommand("SELECT COUNT(*) FROM congtrinh WHERE geom IS NULL")->queryScalar();
-      if($chua > 0): ?>
-        <span class="nav-badge"><?= $chua ?></span>
-      <?php endif; ?>
-    </a>
+    <?php
+    // Module người dùng được phép (admin = tất cả)
+    $me = $user->identity;
+    if (($me->vai_tro ?? 'admin') === 'admin') {
+        $choPhep = array_keys(\common\helpers\Dhqg::MODULES);
+    } else {
+        $json = $me->don_vi_id ? \Yii::$app->db->createCommand('SELECT modules FROM don_vi WHERE id=:i', [':i' => $me->don_vi_id])->queryScalar() : '[]';
+        $choPhep = $json ? (json_decode($json, true) ?: []) : [];
+    }
+    $ctrlId = Yii::$app->controller->id;
+    $mapCtrl = ['cong_trinh' => 'cong-trinh', 'an_toan' => 'an-toan', 'truyen_thong' => 'truyen-thong'];
+    foreach (\common\helpers\Dhqg::MODULES as $mk => $mcfg):
+        if (!in_array($mk, $choPhep, true)) continue;
+        $cid = $mapCtrl[$mk];
+    ?>
+      <a class="nav-item <?= $ctrlId === $cid ? 'active' : '' ?>" href="<?= Url::to(["/$cid/index"]) ?>">
+        <i class="fa <?= $mcfg['icon'] ?>"></i> <?= \yii\helpers\Html::encode($mcfg['label_ngan']) ?>
+      </a>
+    <?php endforeach; ?>
   </div>
   <div class="sb-section">
     <div class="sb-section-title">Hệ thống</div>

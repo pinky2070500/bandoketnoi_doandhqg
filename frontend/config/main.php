@@ -19,13 +19,17 @@ return [
             'rules' => [
                 '' => 'ban-do/index',
                 'ban-do' => 'ban-do/index',
-                'api/congtrinh' => 'api/congtrinh',
+                'dashboard' => 'ban-do/dashboard',
+                'chi-tiet/<id:\d+>' => 'ban-do/chi-tiet',
+                // API công khai (GeoJSON / JSON)
+                'api/diem' => 'api/diem',
+                'api/diem-chi-tiet' => 'api/chi-tiet',
                 'api/thongke' => 'api/thongke',
-                'api/ranh-tinh' => 'api/ranh-tinh',
-                'api/phuong-xa' => 'api/phuong-xa',
-                'api/danh-sach-huyen' => 'api/danh-sach-huyen',
-                'api/danh-sach-xa' => 'api/danh-sach-xa',
-                'api/xa-highlight'  => 'api/xa-highlight',
+                'api/tong-hop' => 'api/tong-hop',
+                'api/ranh-khu' => 'api/ranh-khu',
+                'api/phan-khu' => 'api/phan-khu',
+                'api/don-vi' => 'api/don-vi',
+                'api/cau-hinh' => 'api/cau-hinh',
             ],
         ],
         'request' => [
