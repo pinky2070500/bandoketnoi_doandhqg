@@ -28,6 +28,8 @@ return [
                 'api/tong-hop' => 'api/tong-hop',
                 'api/ranh-khu' => 'api/ranh-khu',
                 'api/phan-khu' => 'api/phan-khu',
+                'api/phuong-xa' => 'api/phuong-xa',
+                'api/khu-vuc' => 'api/khu-vuc',
                 'api/don-vi' => 'api/don-vi',
                 'api/cau-hinh' => 'api/cau-hinh',
             ],

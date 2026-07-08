@@ -61,6 +61,10 @@ class ApiController extends Controller
             $where[] = '(d.don_vi_thuc_hien_id = :dv OR d.don_vi_quan_ly_id = :dv)';
             $params[':dv'] = (int) $dv;
         }
+        if (($kv = trim((string) $req->get('kv', ''))) !== '') {
+            $where[] = 'ST_Within(d.geom, (SELECT geom FROM phuongxa WHERE fid = :kv))';
+            $params[':kv'] = (int) $kv;
+        }
         if (($q = trim((string) $req->get('q', ''))) !== '') {
             $where[] = '(d.ten ILIKE :q OR d.ma ILIKE :q OR d.mo_ta ILIKE :q)';
             $params[':q'] = '%' . $q . '%';
@@ -192,14 +196,37 @@ class ApiController extends Controller
             $where[] = 'nam <= :den';
             $p[':den'] = (int) $den;
         }
+        if (($kv = trim((string) $req->get('kv', ''))) !== '') {
+            $where[] = 'ST_Within(geom, (SELECT geom FROM phuongxa WHERE fid = :kv))';
+            $p[':kv'] = (int) $kv;
+        }
         $w = implode(' AND ', $where);
 
         $theo_module = $db->createCommand("SELECT module, COUNT(*) so FROM doi_tuong WHERE $w GROUP BY module", $p)->queryAll();
         $theo_trang_thai = $db->createCommand("SELECT trang_thai, COUNT(*) so FROM doi_tuong WHERE $w AND module='cong_trinh' GROUP BY trang_thai", $p)->queryAll();
         $theo_nam = $db->createCommand("SELECT nam, COUNT(*) so FROM doi_tuong WHERE $w AND nam IS NOT NULL GROUP BY nam ORDER BY nam", $p)->queryAll();
         $theo_loai_ct = $db->createCommand("SELECT loai, COUNT(*) so FROM doi_tuong WHERE $w AND module='cong_trinh' GROUP BY loai", $p)->queryAll();
+        $theo_loai_at = $db->createCommand("SELECT loai, COUNT(*) so FROM doi_tuong WHERE $w AND module='an_toan' GROUP BY loai ORDER BY so DESC", $p)->queryAll();
+        $theo_loai_tt = $db->createCommand("SELECT loai, COUNT(*) so FROM doi_tuong WHERE $w AND module='truyen_thong' GROUP BY loai ORDER BY so DESC", $p)->queryAll();
+        $theo_don_vi = $db->createCommand("
+            SELECT dv.ten, dv.id, COUNT(*) so FROM doi_tuong d LEFT JOIN don_vi dv ON dv.id=d.don_vi_thuc_hien_id
+            WHERE $w GROUP BY dv.ten, dv.id ORDER BY so DESC
+        ", $p)->queryAll();
+        // Theo khu vực (phường/xã) — đếm đối tượng nằm trong mỗi phường (lọc doi_tuong trong subquery để tránh nhập nhằng cột geom)
+        $theo_khu_vuc = $db->createCommand("
+            SELECT px.fid, px.ten_dvhc ten, COUNT(d.id) so
+            FROM phuongxa px
+            LEFT JOIN (SELECT id, geom FROM doi_tuong WHERE $w) d ON ST_Within(d.geom, px.geom)
+            GROUP BY px.fid, px.ten_dvhc ORDER BY so DESC
+        ", $p)->queryAll();
+        // Truyền thông theo vị trí (phường/xã) — yêu cầu Module 04
+        $tt_theo_khu_vuc = $db->createCommand("
+            SELECT px.fid, px.ten_dvhc ten, COUNT(d.id) so
+            FROM phuongxa px
+            LEFT JOIN (SELECT id, geom FROM doi_tuong WHERE $w AND module='truyen_thong') d ON ST_Within(d.geom, px.geom)
+            GROUP BY px.fid, px.ten_dvhc ORDER BY so DESC
+        ", $p)->queryAll();
 
-        // Đếm nhanh theo hạng mục cho card lãnh đạo
         $count = fn($sql) => (int) $db->createCommand("SELECT COUNT(*) FROM doi_tuong WHERE $w AND $sql", $p)->queryScalar();
         return [
             'the' => [
@@ -210,10 +237,22 @@ class ApiController extends Controller
                 'truyen_thong' => $count("module='truyen_thong'"),
                 'hoan_thanh' => $count("trang_thai='hoan_thanh'"),
             ],
+            // Chỉ số riêng theo yêu cầu từng module
+            'an_toan' => [
+                'canh_bao' => $count("module='an_toan' AND loai IN ('bien_canh_bao','diem_nguy_hiem','ho_da')"),
+                'bien_canh_bao' => $count("module='an_toan' AND loai='bien_canh_bao'"),
+                'pccc' => $count("module='an_toan' AND loai='diem_pccc'"),
+                'camera' => $count("module='an_toan' AND loai='camera'"),
+            ],
             'theo_module' => $theo_module,
             'theo_trang_thai' => $theo_trang_thai,
             'theo_nam' => $theo_nam,
             'theo_loai_ct' => $theo_loai_ct,
+            'theo_loai_at' => $theo_loai_at,
+            'theo_loai_tt' => $theo_loai_tt,
+            'theo_don_vi' => $theo_don_vi,
+            'theo_khu_vuc' => $theo_khu_vuc,
+            'tt_theo_khu_vuc' => $tt_theo_khu_vuc,
         ];
     }
 
@@ -233,6 +272,33 @@ class ApiController extends Controller
             SELECT ma, ten, loai, ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.00015)) gj FROM phan_khu ORDER BY ten
         ")->queryAll();
         return $this->fc($rows, fn($r) => ['ma' => $r['ma'], 'ten' => $r['ten'], 'loai' => $r['loai']]);
+    }
+
+    /** GET /api/phuong-xa — ranh giới phường/xã + dân số/diện tích + số đối tượng bên trong. */
+    public function actionPhuongXa()
+    {
+        $rows = Yii::$app->db->createCommand("
+            SELECT px.fid, px.ten_dvhc ten, px.dan_so, px.dien_tich, px.ho_ten_ct, px.bi_thu,
+                   (SELECT COUNT(*) FROM doi_tuong d WHERE ST_Within(d.geom, px.geom)) so_dt,
+                   ST_AsGeoJSON(ST_SimplifyPreserveTopology(px.geom, 0.0002)) gj
+            FROM phuongxa px ORDER BY px.ten_dvhc
+        ")->queryAll();
+        return $this->fc($rows, fn($r) => [
+            'fid' => (int) $r['fid'],
+            'ten' => $r['ten'],
+            'dan_so' => $r['dan_so'] !== null ? (float) $r['dan_so'] : null,
+            'dien_tich' => $r['dien_tich'] !== null ? round((float) $r['dien_tich'], 1) : null,
+            'chu_tich' => $r['ho_ten_ct'],
+            'bi_thu' => $r['bi_thu'],
+            'so_dt' => (int) $r['so_dt'],
+        ]);
+    }
+
+    /** GET /api/khu-vuc — danh sách phường/xã cho bộ lọc. */
+    public function actionKhuVuc()
+    {
+        $rows = Yii::$app->db->createCommand('SELECT fid, ten_dvhc ten FROM phuongxa ORDER BY ten_dvhc')->queryAll();
+        return array_map(fn($r) => ['fid' => (int) $r['fid'], 'ten' => $r['ten']], $rows);
     }
 
     /** GET /api/don-vi — danh sách đơn vị. */

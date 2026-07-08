@@ -20,8 +20,9 @@ html,body{height:100%;overflow:hidden}
 #topbar{position:fixed;top:0;left:0;right:0;height:var(--top);background:#fff;border-bottom:1px solid var(--line);
   display:flex;align-items:center;gap:14px;padding:0 16px;z-index:1100;box-shadow:var(--shadow-sm)}
 .brand{display:flex;align-items:center;gap:11px}
-.emblem{width:40px;height:40px;border-radius:11px;background:var(--brand-grad);display:flex;align-items:center;justify-content:center;
-  color:#fff;font-weight:900;font-size:13px;letter-spacing:.5px;box-shadow:0 4px 12px var(--ring);flex-shrink:0}
+.emblem{width:46px;height:46px;border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;
+  padding:5px;border:1px solid var(--line);box-shadow:var(--shadow-sm);flex-shrink:0}
+.emblem img{max-width:100%;max-height:100%;object-fit:contain}
 .brand h1{font-size:15px;font-weight:800;letter-spacing:-.3px;line-height:1.15}
 .brand p{font-size:10.5px;color:var(--gray);font-weight:500}
 #search{display:flex;align-items:center;gap:8px;background:var(--bg);border:1.5px solid transparent;border-radius:22px;
@@ -71,6 +72,11 @@ html,body{height:100%;overflow:hidden}
 .legend .it{display:flex;align-items:center;gap:8px;margin:4px 0;color:var(--gray-700)}
 .legend .it .dot{width:11px;height:11px;border-radius:50%}
 .mk{border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.35);width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px}
+.px-lbl{background:none;border:none}
+.px-lbl span{display:inline-block;transform:translate(-50%,-50%);white-space:nowrap;font-size:11.5px;font-weight:700;color:var(--brand-d);
+  text-shadow:0 1px 3px #fff,0 -1px 3px #fff,1px 0 3px #fff,-1px 0 3px #fff;letter-spacing:.2px}
+.px-tip{font-size:12.5px;line-height:1.5}
+.px-tip b{color:var(--brand-d)}
 #load{position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:2000;flex-direction:column;gap:14px;color:var(--gray)}
 .mob-btn{display:none}
 @media(max-width:768px){#sidebar{transform:translateX(-100%);transition:.25s;box-shadow:var(--shadow-lg)}#sidebar.open{transform:none}#map{left:0}.legend{left:16px}.mob-btn{display:inline-flex}#detail{width:calc(100% - 32px)}}
@@ -81,7 +87,7 @@ html,body{height:100%;overflow:hidden}
 
 <div id="topbar">
   <button class="btn btn-light btn-sm mob-btn" onclick="document.getElementById('sidebar').classList.toggle('open')"><i class="fa fa-bars"></i></button>
-  <div class="brand"><div class="emblem">ĐHQG</div>
+  <div class="brand"><div class="emblem"><img src="/img/logo-mark-160.png" alt="ĐHQG-HCM"></div>
     <div><h1>Bản đồ số Khu đô thị</h1><p>Đại học Quốc gia TP. Hồ Chí Minh</p></div></div>
   <div id="search"><i class="fa fa-search"></i><input id="q" placeholder="Tìm công trình, địa điểm, mã…"></div>
   <div class="tb-sp"></div>
@@ -102,6 +108,7 @@ html,body{height:100%;overflow:hidden}
   <div class="sec">
     <h3>Nền bản đồ</h3>
     <label class="chk"><input type="checkbox" id="t-ranh" checked> Ranh giới khu đô thị</label>
+    <label class="chk"><input type="checkbox" id="t-phuongxa"> Ranh giới phường/xã</label>
     <label class="chk"><input type="checkbox" id="t-phankhu"> Phân khu / trường thành viên</label>
   </div>
 </div>
@@ -119,7 +126,7 @@ html,body{height:100%;overflow:hidden}
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@gh-pages/qrcode.min.js"></script>
 <script>
-let CFG, map, layers={}, active={}, ranhLayer, phanKhuLayer;
+let CFG, map, layers={}, active={}, ranhLayer, phanKhuLayer, pxLayer, pxLabels;
 const state={q:'',nam:'',dv:'',tt:''};
 
 function mkIcon(color){
@@ -156,10 +163,17 @@ async function init(){
   document.getElementById('f-dv').addEventListener('change',e=>{state.dv=e.target.value;loadDiem()});
   document.getElementById('f-tt').addEventListener('change',e=>{state.tt=e.target.value;loadDiem()});
   document.getElementById('t-ranh').addEventListener('change',e=>{e.target.checked?map.addLayer(ranhLayer):map.removeLayer(ranhLayer);});
+  document.getElementById('t-phuongxa').addEventListener('change',e=>togglePhuongXa(e.target.checked));
   document.getElementById('t-phankhu').addEventListener('change',e=>togglePhanKhu(e.target.checked));
 
   await loadRanh();
   await loadDiem();
+
+  // Bật sẵn lớp theo URL (chia sẻ link), vd /ban-do?px=1 hoặc ?pk=1
+  const usp=new URLSearchParams(location.search);
+  if(usp.get('px')==='1'){document.getElementById('t-phuongxa').checked=true;await togglePhuongXa(true);}
+  if(usp.get('pk')==='1'){document.getElementById('t-phankhu').checked=true;await togglePhanKhu(true);}
+
   document.getElementById('load').style.display='none';
 }
 
@@ -169,6 +183,30 @@ async function loadRanh(){
   const gj=await (await fetch('/api/ranh-khu')).json();
   ranhLayer=L.geoJSON(gj,{style:{color:CFG.brand.main,weight:2.5,fillColor:CFG.brand.alt,fillOpacity:.05,dashArray:'6,4'}}).addTo(map);
   if(gj.features.length) map.fitBounds(ranhLayer.getBounds(),{padding:[36,36]});
+}
+
+async function togglePhuongXa(on){
+  if(on){
+    if(!pxLayer){
+      const gj=await (await fetch('/api/phuong-xa')).json();
+      const max=Math.max(1,...gj.features.map(f=>f.properties.so_dt));
+      pxLayer=L.geoJSON(gj,{
+        style:f=>({color:CFG.brand.main,weight:1.6,fillColor:CFG.brand.alt,fillOpacity:0.07+0.30*(f.properties.so_dt/max)}),
+        onEachFeature:(f,l)=>{
+          const p=f.properties;
+          const ds=p.dan_so!=null?(p.dan_so*1000).toLocaleString('vi-VN'):'—';
+          l.bindTooltip(`<div class="px-tip"><b>${p.ten}</b><br>Dân số: ${ds} người · DT: ${p.dien_tich??'—'} km²<br>Đối tượng quản lý: <b>${p.so_dt}</b></div>`,{sticky:true});
+          l.on('mouseover',()=>l.setStyle({weight:3,fillOpacity:0.45}));
+          l.on('mouseout',()=>pxLayer.resetStyle(l));
+        }
+      });
+      pxLabels=L.layerGroup(gj.features.map(f=>{
+        const c=L.geoJSON(f).getBounds().getCenter();
+        return L.marker(c,{interactive:false,icon:L.divIcon({className:'px-lbl',html:`<span>${f.properties.ten.replace('Phường ','P. ').replace('Xã ','X. ')}</span>`})});
+      }));
+    }
+    map.addLayer(pxLayer); map.addLayer(pxLabels);
+  }else{ if(pxLayer)map.removeLayer(pxLayer); if(pxLabels)map.removeLayer(pxLabels); }
 }
 
 async function togglePhanKhu(on){

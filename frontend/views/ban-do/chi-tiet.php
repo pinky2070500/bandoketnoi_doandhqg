@@ -16,7 +16,8 @@ $this->title = 'Chi tiết — Bản đồ số ĐHQG-HCM';
 <style>
 body{background:var(--bg)}
 .topbar{background:var(--brand-grad);color:#fff;padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
-.topbar .emblem{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px}
+.topbar .emblem{width:38px;height:38px;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;padding:4px}
+.topbar .emblem img{max-width:100%;max-height:100%;object-fit:contain}
 .topbar b{font-size:14px;font-weight:800}
 .wrap{max-width:680px;margin:0 auto;padding:16px}
 .hero{height:240px;position:relative;background:var(--brand-grad);border-radius:var(--radius-lg);overflow:hidden;display:flex;align-items:flex-end;color:#fff;padding:20px}
@@ -40,7 +41,7 @@ body{background:var(--bg)}
 </style>
 </head>
 <body>
-<div class="topbar"><div class="emblem">ĐHQG</div><b>Bản đồ số Khu đô thị ĐHQG-HCM</b></div>
+<div class="topbar"><div class="emblem"><img src="/img/logo-mark-160.png" alt="ĐHQG-HCM"></div><b>Bản đồ số Khu đô thị ĐHQG-HCM</b></div>
 <div class="wrap" id="wrap"><div class="miss"><div class="spin" style="margin:0 auto 12px"></div>Đang tải…</div></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

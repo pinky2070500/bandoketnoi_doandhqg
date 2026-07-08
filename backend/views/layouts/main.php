@@ -39,11 +39,11 @@ a{text-decoration:none;color:inherit}
 }
 .tb-logo{display:flex;align-items:center;gap:9px;flex-shrink:0}
 .tb-logo-icon{
-  width:34px;height:34px;border-radius:9px;
-  background:linear-gradient(135deg,var(--green),var(--green-dark));
-  display:flex;align-items:center;justify-content:center;
+  width:38px;height:38px;border-radius:9px;background:#fff;
+  border:1px solid var(--gray-200);
+  display:flex;align-items:center;justify-content:center;padding:4px;
 }
-.tb-logo-icon i{color:#fff;font-size:14px}
+.tb-logo-icon img{max-width:100%;max-height:100%;object-fit:contain}
 .tb-brand{font-size:14px;font-weight:700;color:var(--gray-900)}
 .tb-brand span{font-weight:400;color:var(--gray-400);margin-left:6px;font-size:12px}
 .tb-spacer{flex:1}
@@ -216,7 +216,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 <!-- TOPBAR -->
 <div id="topbar">
   <div class="tb-logo">
-    <div class="tb-logo-icon"><i class="fa-solid fa-map-location-dot"></i></div>
+    <div class="tb-logo-icon"><img src="<?= Yii::$app->params['frontendUrl'] ?? '' ?>/img/logo-mark-160.png" alt="ĐHQG-HCM"></div>
     <div class="tb-brand">Bản đồ số ĐHQG-HCM <span>Quản trị</span></div>
   </div>
   <div class="tb-spacer"></div>
