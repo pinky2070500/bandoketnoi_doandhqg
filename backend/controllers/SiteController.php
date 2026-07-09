@@ -62,6 +62,7 @@ class SiteController extends Controller
     public function actionLogin()
     {
         if (!Yii::$app->user->isGuest) return $this->goHome();
+        $this->layout = false; // trang đăng nhập tự chứa HTML (không sidebar)
         $model = new \common\models\LoginForm();
         if ($model->load(Yii::$app->request->post()) && $model->login()) {
             return $this->goBack();
