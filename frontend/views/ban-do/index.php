@@ -107,8 +107,8 @@ html,body{height:100%;overflow:hidden}
   </div>
   <div class="sec">
     <h3>Nền bản đồ</h3>
-    <label class="chk"><input type="checkbox" id="t-ranh" checked> Ranh giới khu đô thị</label>
-    <label class="chk"><input type="checkbox" id="t-phuongxa"> Ranh giới phường/xã</label>
+    <label class="chk"><input type="checkbox" id="t-ranh"> Ranh giới khu đô thị</label>
+    <label class="chk"><input type="checkbox" id="t-phuongxa" checked> Ranh giới phường/xã</label>
     <label class="chk"><input type="checkbox" id="t-phankhu"> Phân khu / trường thành viên</label>
   </div>
 </div>
@@ -167,6 +167,7 @@ async function init(){
   document.getElementById('t-phankhu').addEventListener('change',e=>togglePhanKhu(e.target.checked));
 
   await loadRanh();
+  await togglePhuongXa(true); // Thêm dòng này để tự động bật lớp phường xã lên
   await loadDiem();
 
   // Bật sẵn lớp theo URL (chia sẻ link), vd /ban-do?px=1 hoặc ?pk=1
@@ -181,7 +182,7 @@ let debT; function deb(fn){clearTimeout(debT);debT=setTimeout(fn,320);}
 
 async function loadRanh(){
   const gj=await (await fetch('/api/ranh-khu')).json();
-  ranhLayer=L.geoJSON(gj,{style:{color:CFG.brand.main,weight:2.5,fillColor:CFG.brand.alt,fillOpacity:.05,dashArray:'6,4'}}).addTo(map);
+  ranhLayer=L.geoJSON(gj,{style:{color:CFG.brand.main,weight:2.5,fillColor:CFG.brand.alt,fillOpacity:.05,dashArray:'6,4'}});
   if(gj.features.length) map.fitBounds(ranhLayer.getBounds(),{padding:[36,36]});
 }
 
